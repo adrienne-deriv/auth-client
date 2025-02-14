@@ -31,6 +31,10 @@ type RequestOidcAuthenticationOptions = {
     postLogoutRedirectUri?: string;
 };
 
+type requestOidcSilentAuthenticationOptions = {
+    redirectSilentCallbackUri: string;
+};
+
 type RequestOidcTokenOptions = {
     redirectCallbackUri?: string;
     postLogoutRedirectUri?: string;
@@ -144,6 +148,25 @@ export const requestOidcAuthentication = async (options: RequestOidcAuthenticati
     }
 };
 
+export const requestOidcSilentAuthentication = async (options: requestOidcSilentAuthenticationOptions) => {
+    const { redirectSilentCallbackUri } = options;
+
+    try {
+        const userManager = await createUserManager({
+            redirectCallbackUri: redirectSilentCallbackUri,
+        });
+
+        await userManager.signinSilent({
+            extraQueryParams: {
+                brand: 'deriv',
+            },
+        });
+        return { userManager };
+    } catch (error) {
+        console.error('Authentication failed:', error);
+    }
+};
+
 /**
  * Requests access tokens from the authorization server.  * The returned access tokens will be used to fetch the original tokens that can be passed to the `authorize` endpoint.
  *
@@ -241,6 +264,53 @@ export const requestLegacyToken = async (accessToken: string): Promise<LegacyTok
         console.error('unable to request legacy tokens: ', error);
         if (error instanceof Error) throw new OIDCError(OIDCErrorType.LegacyTokenRequestFailed, error.message);
         throw new OIDCError(OIDCErrorType.LegacyTokenRequestFailed, 'unable to request legacy tokens');
+    }
+};
+
+/**
+ * Revokes legacy tokens by making a POST request to the legacy token revocation endpoint.
+ * Once these tokens are revoked, they can no longer be used for authentication.
+ *
+ * @param {string[]} tokens - An array of legacy tokens (a1-... format) to be revoked. Maximum 20 tokens allowed.
+ * All tokens must belong to the same user and app_id.
+ * @returns {Promise<void>} A promise that resolves when the tokens are successfully revoked
+ *
+ * @throws {OIDCError} With type `RevokeTokenRequestFailed` if:
+ * - The request fails due to network issues (500 Internal Server Error)
+ * - The tokens array is empty or invalid format (400 Bad Request - InvalidPayload)
+ * - The tokens are invalid, already revoked, or belong to different users/app_ids (400 Bad Request - InvalidToken)
+ * - The number of tokens exceeds the maximum limit of 20 (400 Bad Request - InvalidTokenCount)
+ * - Rate limit is exceeded - more than 5 requests per minute (429 Too Many Requests - RateLimit)
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const legacyTokens = [
+ *     'a1-....',
+ *     'a1-....'
+ *   ];
+ *   await revokeLegacyTokens(legacyTokens);
+ *   // Tokens successfully revoked
+ * } catch (error) {
+ *   if (error instanceof OIDCError) {
+ *     // Handle specific revocation errors
+ *     console.error(error.message);
+ *   }
+ * }
+ * ```
+ */
+export const revokeLegacyTokens = async (tokens: string[]): Promise<void> => {
+    const { serverUrl } = getServerInfo();
+
+    try {
+        await fetch(`https://${serverUrl}/oauth2/legacy/tokens/revoke`, {
+            method: 'POST',
+            body: JSON.stringify(tokens),
+        });
+    } catch (error) {
+        console.error('unable to request legacy tokens: ', error);
+        if (error instanceof Error) throw new OIDCError(OIDCErrorType.RevokeTokenRequestFailed, error.message);
+        throw new OIDCError(OIDCErrorType.RevokeTokenRequestFailed, 'unable to revoke legacy tokens');
     }
 };
 

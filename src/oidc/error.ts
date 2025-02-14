@@ -3,6 +3,7 @@ export enum OIDCErrorType {
     AuthenticationRequestFailed = 'AuthenticationRequestFailed',
     AccessTokenRequestFailed = 'AccessTokenRequestFailed',
     LegacyTokenRequestFailed = 'LegacyTokenRequestFailed',
+    RevokeTokenRequestFailed = 'RevokeTokenRequestFailed',
     UserManagerCreationFailed = 'UserManagerCreationFailed',
     OneTimeCodeMissing = 'OneTimeCodeMissing',
     FailedToRemoveSession = 'FailedToRemoveSession',
