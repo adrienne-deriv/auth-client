@@ -9,7 +9,7 @@ module.exports = {
         { name: 'beta', prerelease: true },
         { name: 'alpha', prerelease: true },
     ],
-    repositoryUrl: 'git@github.com:deriv-com/auth-client.git',
+    repositoryUrl: 'git@github.com:adrienne-deriv/auth-client.git',
     plugins: [
         [
             '@semantic-release/commit-analyzer',
