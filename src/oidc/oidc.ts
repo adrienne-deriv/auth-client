@@ -160,6 +160,7 @@ export const requestOidcSilentAuthentication = async (options: requestOidcSilent
             extraQueryParams: {
                 brand: 'deriv',
             },
+            silentRequestTimeoutInSeconds: 60000,
         });
         return { userManager };
     } catch (error) {
