@@ -1,4 +1,4 @@
-import { UserManager, WebStorageStateStore } from 'oidc-client-ts';
+import { UserManager, WebStorageStateStore, Log } from 'oidc-client-ts';
 import { OIDCError, OIDCErrorType } from './error';
 import { getServerInfo, getOAuthLogoutUrl } from '../constants';
 import { getConfigurations } from './config';
@@ -43,6 +43,7 @@ type RequestOidcTokenOptions = {
 type CreateUserManagerOptions = {
     redirectCallbackUri?: string;
     postLogoutRedirectUri?: string;
+    silentRedirectCallbackUri?: string;
 };
 
 type OAuth2LogoutOptions = {
@@ -153,7 +154,7 @@ export const requestOidcSilentAuthentication = async (options: requestOidcSilent
 
     try {
         const userManager = await createUserManager({
-            redirectCallbackUri: redirectSilentCallbackUri,
+            silentRedirectCallbackUri: redirectSilentCallbackUri,
         });
 
         await userManager.signinSilent({
@@ -322,7 +323,9 @@ export const revokeLegacyTokens = async (tokens: string[]): Promise<void> => {
  * @param options.postLogoutRedirectUri - The URI to redirect after logging out
  */
 export const createUserManager = async (options: CreateUserManagerOptions) => {
-    const { redirectCallbackUri, postLogoutRedirectUri } = options;
+    Log.setLogger(console);
+    Log.setLevel(Log.DEBUG);
+    const { redirectCallbackUri, postLogoutRedirectUri, silentRedirectCallbackUri } = options;
     const { appId } = getServerInfo();
 
     const { postLogoutRedirectUri: postLogoutRedirectUriFromStorage } = getConfigurations();
@@ -337,6 +340,7 @@ export const createUserManager = async (options: CreateUserManagerOptions) => {
             authority: oidc_config.issuer,
             client_id: appId,
             redirect_uri: _redirectUri,
+            silent_redirect_uri: silentRedirectCallbackUri,
             response_type: 'code',
             scope: 'openid',
             stateStore: new WebStorageStateStore({ store: window.localStorage }),
