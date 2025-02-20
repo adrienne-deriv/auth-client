@@ -16,4 +16,6 @@ export const SilentCallback = () => {
             });
         }
     }, []);
+
+    return <></>;
 };
