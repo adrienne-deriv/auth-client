@@ -1,5 +1,5 @@
 {
-    "name": "@adrienne-deriv/auth-client",
+    "name": "adrienne-auth-client",
     "private": false,
     "version": "0.0.0-development",
     "type": "module",
