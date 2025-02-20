@@ -31,6 +31,11 @@ type RequestOidcAuthenticationOptions = {
     postLogoutRedirectUri?: string;
 };
 
+type requestOidcSilentAuthenticationOptions = {
+    redirectCallbackUri?: string;
+    redirectSilentCallbackUri: string;
+};
+
 type RequestOidcTokenOptions = {
     redirectCallbackUri?: string;
     postLogoutRedirectUri?: string;
@@ -38,6 +43,7 @@ type RequestOidcTokenOptions = {
 
 type CreateUserManagerOptions = {
     redirectCallbackUri?: string;
+    redirectSilentCallbackUri?: string;
     postLogoutRedirectUri?: string;
 };
 
@@ -145,6 +151,52 @@ export const requestOidcAuthentication = async (options: RequestOidcAuthenticati
 };
 
 /**
+ * Initiates the OIDC silent authentication flow by checking the login status in an iframe.
+ * It is recommended to use the `SilentCallback` component from this library in the silent callback page to handle events.
+ *
+ *
+ * @param options - Configuration options for the OIDC silent authentication request
+ * @param options.redirectSilentCallbackUri - The silent callback page URI which will be rendered in an iframe to check login status
+ *
+ * @returns Promise that resolves to an object containing the UserManager instance
+ * @throws {OIDCError} With type AuthenticationRequestFailed if the authentication request fails
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const { userManager } = await requestOidcSilentAuthentication({
+ *     redirectCallbackUri: 'https://smarttrader.deriv.com/en/silent-callback',
+ *   });
+ * } catch (error) {
+ *   // Handle authentication request error
+ * }
+ * ```
+ *
+ * @remarks
+ * - An iframe will be generated and embedded in the page, which will send postMessage events to the parent window to indicate the login status
+ */
+export const requestOidcSilentAuthentication = async (options: requestOidcSilentAuthenticationOptions) => {
+    const { redirectCallbackUri, redirectSilentCallbackUri } = options;
+
+    try {
+        const userManager = await createUserManager({
+            redirectCallbackUri,
+            redirectSilentCallbackUri,
+        });
+
+        await userManager.signinSilent({
+            extraQueryParams: {
+                brand: 'deriv',
+            },
+            silentRequestTimeoutInSeconds: 60000,
+        });
+        return { userManager };
+    } catch (error) {
+        console.error('Authentication failed:', error);
+    }
+};
+
+/**
  * Requests access tokens from the authorization server.  * The returned access tokens will be used to fetch the original tokens that can be passed to the `authorize` endpoint.
  *
  * This function should only be called when `requestOidcAuthentication` has been called. Generally this function should be placed within the callback page.
@@ -245,13 +297,60 @@ export const requestLegacyToken = async (accessToken: string): Promise<LegacyTok
 };
 
 /**
+ * Revokes legacy tokens by making a POST request to the legacy token revocation endpoint.
+ * Once these tokens are revoked, they can no longer be used for authentication.
+ *
+ * @param {string[]} tokens - An array of legacy tokens (a1-... format) to be revoked. Maximum 20 tokens allowed.
+ * All tokens must belong to the same user and app_id.
+ * @returns {Promise<void>} A promise that resolves when the tokens are successfully revoked
+ *
+ * @throws {OIDCError} With type `RevokeTokenRequestFailed` if:
+ * - The request fails due to network issues (500 Internal Server Error)
+ * - The tokens array is empty or invalid format (400 Bad Request - InvalidPayload)
+ * - The tokens are invalid, already revoked, or belong to different users/app_ids (400 Bad Request - InvalidToken)
+ * - The number of tokens exceeds the maximum limit of 20 (400 Bad Request - InvalidTokenCount)
+ * - Rate limit is exceeded - more than 5 requests per minute (429 Too Many Requests - RateLimit)
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const legacyTokens = [
+ *     'a1-....',
+ *     'a1-....'
+ *   ];
+ *   await revokeLegacyTokens(legacyTokens);
+ *   // Tokens successfully revoked
+ * } catch (error) {
+ *   if (error instanceof OIDCError) {
+ *     // Handle specific revocation errors
+ *     console.error(error.message);
+ *   }
+ * }
+ * ```
+ */
+export const revokeLegacyTokens = async (tokens: string[]): Promise<void> => {
+    const { serverUrl } = getServerInfo();
+
+    try {
+        await fetch(`https://${serverUrl}/oauth2/legacy/tokens/revoke`, {
+            method: 'POST',
+            body: JSON.stringify(tokens),
+        });
+    } catch (error) {
+        console.error('unable to request legacy tokens: ', error);
+        if (error instanceof Error) throw new OIDCError(OIDCErrorType.RevokeTokenRequestFailed, error.message);
+        throw new OIDCError(OIDCErrorType.RevokeTokenRequestFailed, 'unable to revoke legacy tokens');
+    }
+};
+
+/**
  * Creates a UserManager instance that will be used to manage and call the OIDC flow
  * @param options - Configuration options for the OIDC token request
  * @param options.redirectCallbackUri - The callback page URI to redirect back
  * @param options.postLogoutRedirectUri - The URI to redirect after logging out
  */
 export const createUserManager = async (options: CreateUserManagerOptions) => {
-    const { redirectCallbackUri, postLogoutRedirectUri } = options;
+    const { redirectCallbackUri, redirectSilentCallbackUri, postLogoutRedirectUri } = options;
     const { appId } = getServerInfo();
 
     const { postLogoutRedirectUri: postLogoutRedirectUriFromStorage } = getConfigurations();
@@ -266,6 +365,7 @@ export const createUserManager = async (options: CreateUserManagerOptions) => {
             authority: oidc_config.issuer,
             client_id: appId,
             redirect_uri: _redirectUri,
+            silent_redirect_uri: redirectSilentCallbackUri,
             response_type: 'code',
             scope: 'openid',
             stateStore: new WebStorageStateStore({ store: window.localStorage }),

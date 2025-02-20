@@ -178,12 +178,19 @@ This logout process combines two parts: clearing OAuth session cookies through t
 
 4. Once the logout is completed, the cookie logged_state will be set to false.
 
+5. Once the user has succesfully logged out of Hydra, we should revoke their legacy tokens (e.g. a1-...). We can do this by calling the function `revokeLegacyTokens` and passing in the list of legacy tokens to revoke. Typically you should do this inside your logout handler, which this is invoked after Hydra has successfully logged the user's session out.
+
 ```typescript
-import { OAuth2Logout } from '@deriv-com/auth-client';
+import { OAuth2Logout, revokeLegacyTokens } from '@deriv-com/auth-client';
 
 // we clean up everything related to the user here, for now it's just user's account
 // later on we should clear user tokens as well
 const logout = useCallback(async () => {
+    const clientAccounts = localStorage.getItem('client.accounts') || []
+    const tokens = Object.values(clientAccounts).map(account => account.token);
+    // revoke the legacy tokens,
+    await revokeLegacyTokens(tokens);
+    // then call your application's post-logout cleanup functions
     await apiManager.logout();
     updateLoginAccounts([]);
     updateCurrentLoginAccount({
@@ -200,3 +207,25 @@ const handleLogout = () => {
 // In your button
 <button onClick={handleLogout}>Logout</button>
 ```
+
+## Logout Front Channels
+
+Front channels are pages in your application which sole responsibility is to clear local/session storage of your authentication data like `client.accounts` or `loginid` when its rendered. This will be used and invoked by OIDC in an iframe during the logout process to log your application out and clear its local/session storage, so that when we land in the application, it will already be in a logged out state. Typically we register front channels under the route `/front-channel`.
+
+For instance, assume that you are already logged in on Deriv App, SmartTrader and Traders Hub Outsystems, and that these applications have front channels implemented on routes like:
+
+-   `https://app.deriv.com/front-channel`
+-   `https://smarttrader.deriv.com/front-channel` and
+-   `https://hub.deriv.com/tradershub/front-channel`
+
+Then assume that you are logging out from Deriv.app. When you click the Logout button, in the background Hydra checks any of its registered applications that has the front channels logout route and has a session, and automatically invokes the route using an iframe like:
+
+```
+<iframe src="https://app.deriv.com/front-channel?iss=https://oauth.deriv.com&sid=..."></iframe>
+<iframe src="https://smarttrader.deriv.com/front-channel?iss=https://oauth.deriv.com&sid=..."></iframe>
+<iframe src="https://hub.deriv.com/tradershub/front-channel?iss=https://oauth.deriv.com&sid=..."></iframe>
+```
+
+Which will automatically clear the local/session storage for authentication data within SmartTrader and Traders Hub Outsystems, so that when the user navigates to SmartTrader or Traders Hub Outsystems, they are already in a logged out state since their `client.accounts` is already cleared off the local storage.
+
+Once the route and page is implemented, you will need to notify the authentication squad or DevOps to register the front channel logout URI in order for Hydra to invoke it during the logout flow.
